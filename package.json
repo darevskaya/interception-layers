@@ -1,0 +1,23 @@
+{
+  "name": "intercept-layers",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Runnable examples of browser request interception at different layers: framework APIs, raw CDP, and WebDriver BiDi.",
+  "scripts": {
+    "server": "node server/app.js",
+    "playwright": "node examples/playwright-route.js",
+    "puppeteer": "node examples/puppeteer-intercept.js",
+    "raw-cdp": "node examples/raw-cdp-intercept.js",
+    "bidi-raw": "node examples/bidi-raw-intercept.js",
+    "bidi-puppeteer": "node examples/bidi-puppeteer-intercept.js",
+    "cdp-throttle": "node examples/playwright-cdp-throttle.js",
+    "failed-requests": "node examples/get-failed-requests.js"
+  },
+  "dependencies": {
+    "@puppeteer/browsers": "^3.2.1",
+    "playwright": "^1.62.0",
+    "puppeteer": "^25.9.0",
+    "ws": "^8.18.0"
+  }
+}
