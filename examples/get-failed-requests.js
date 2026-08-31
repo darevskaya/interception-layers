@@ -14,6 +14,7 @@
  */
 import { chromium } from 'playwright';
 import { startServer, stopServer, LOCAL_ORIGIN } from '../server/app.js';
+import { step, table, verdict } from './lib/trace.js';
 
 /**
  * Attach a collector to a page and return a query function, plus a way to wait
@@ -83,6 +84,19 @@ const browser = await chromium.launch();
 const page = await browser.newPage();
 
 const { getFailedRequests, settled } = await trackRequests(page);
+step('collector', 'attached, keeping failures only');
+
+// Trace only: the framework's general-purpose log, which sees every response.
+// It is here to show what the narrow tool above refuses to hand back — the
+// collector itself never retains any of this.
+const seen = [];
+page.on('response', response => {
+  seen.push({
+    method: response.request().method(),
+    path: new URL(response.url()).pathname,
+    status: response.status(),
+  });
+});
 
 await page.goto(LOCAL_ORIGIN);
 
@@ -94,14 +108,27 @@ await page.evaluate(() => fetch('/api/products'));
 await page.evaluate(() => fetch('/api/checkout', { method: 'POST' }));
 await checkoutSettled;
 
-console.log('all failures:');
-console.log(JSON.stringify(getFailedRequests(), null, 2));
-
+const failures = getFailedRequests();
 const matched = getFailedRequests({ urlPattern: '/api/checkout' });
 
-console.log('\nfiltered to /api/checkout:');
-console.log(JSON.stringify(matched, null, 2));
-console.log(matched.length === 1 && matched[0].status === 500 ? '\nPASS' : '\nFAIL');
+step('page made', `${seen.length} requests`);
+step('tool returns', `${failures.length} failure, ${matched.length} matching /api/checkout`);
+
+console.log('');
+table(
+  ['method', 'path', 'status', 'returned by the tool'],
+  seen.map(request => [
+    request.method,
+    request.path,
+    request.status,
+    failures.some(failure => failure.url.endsWith(request.path)) ? 'yes' : '-',
+  ]),
+);
 
 await browser.close();
 await stopServer(server);
+
+verdict(
+  matched.length === 1 && matched[0].status === 500,
+  `matched  ${matched.map(failure => `${failure.method} ${failure.url} ${failure.status}`).join(', ')}`,
+);

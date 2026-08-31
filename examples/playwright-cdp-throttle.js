@@ -11,6 +11,7 @@
  */
 import { chromium } from 'playwright';
 import { startServer, stopServer, LOCAL_ORIGIN } from '../server/app.js';
+import { bar, step, verdict } from './lib/trace.js';
 
 const RATE = 6;
 
@@ -32,17 +33,24 @@ const page = await browser.newPage();
 await page.goto(LOCAL_ORIGIN);
 
 const before = await measure(page);
+step('measured', `${before.ms.toFixed(0)} ms, unthrottled`);
 
+// One protocol call, then straight back to the framework.
 const cdp = await page.context().newCDPSession(page);
+step('cdp session', 'opened on the Playwright page');
 await cdp.send('Emulation.setCPUThrottlingRate', { rate: RATE });
+step('throttled', `Emulation.setCPUThrottlingRate rate ${RATE}`);
 
 const after = await measure(page);
+step('measured', `${after.ms.toFixed(0)} ms, throttled`);
 
-console.log(`unthrottled: ${before.ms.toFixed(0)}ms`);
-console.log(`throttled ${RATE}x: ${after.ms.toFixed(0)}ms`);
-console.log(`slowdown: ${(after.ms / before.ms).toFixed(1)}x`);
-console.log(after.ms > before.ms * 2 ? 'PASS' : 'FAIL');
+console.log('');
+const slowest = Math.max(before.ms, after.ms);
+bar('unthrottled', Math.round(before.ms), slowest);
+bar(`throttled ${RATE}x`, Math.round(after.ms), slowest);
 
 await cdp.detach();
 await browser.close();
 await stopServer(server);
+
+verdict(after.ms > before.ms * 2, `slowdown ${(after.ms / before.ms).toFixed(1)}x`);

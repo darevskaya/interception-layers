@@ -21,6 +21,7 @@ import path from 'node:path';
 import { getInstalledBrowsers } from '@puppeteer/browsers';
 import WebSocket from 'ws';
 import { startServer, stopServer, LOCAL_ORIGIN, FAKE_ORIGIN } from '../server/app.js';
+import { step, verdict, wire } from './lib/trace.js';
 
 const BIDI_PORT = 9223;
 
@@ -62,6 +63,8 @@ function createConnection(ws) {
     const message = JSON.parse(raw.toString());
 
     if (message.type === 'success' || message.type === 'error') {
+      wire('in', `#${message.id}`, message.result ?? message.message);
+
       const { resolve, reject } = pending.get(message.id) ?? {};
       pending.delete(message.id);
 
@@ -71,6 +74,7 @@ function createConnection(ws) {
     }
 
     if (message.type === 'event') {
+      wire('event', message.method, message.params);
       for (const listener of listeners) listener(message);
     }
   });
@@ -78,6 +82,7 @@ function createConnection(ws) {
   return {
     send(method, params = {}) {
       const id = ++nextId;
+      wire('out', `#${id} ${method}`, params);
       ws.send(JSON.stringify({ id, method, params }));
       return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
     },
@@ -113,14 +118,21 @@ async function connect() {
   throw new Error('could not connect to the BiDi endpoint');
 }
 
+step('firefox', firefoxPath);
+step('launched firefox', `--remote-debugging-port=${BIDI_PORT}`);
+
 const ws = await connect();
 const bidi = createConnection(ws);
+step('websocket open', `ws://127.0.0.1:${BIDI_PORT}/session`);
 
+// BiDi needs a session before anything else works. CDP has no equivalent step.
 await bidi.send('session.new', { capabilities: {} });
+step('session.new', 'no CDP counterpart');
 
 // Events are only delivered after an explicit subscription, and interception
 // only blocks requests when the matching event is subscribed to.
 await bidi.send('session.subscribe', { events: ['network.beforeRequestSent'] });
+step('session.subscribe', 'without it, requests match but are never blocked');
 
 // BiDi matches on the parts of a URL rather than a glob, so the shared
 // constant is split rather than interpolated.
@@ -132,6 +144,7 @@ await bidi.send('network.addIntercept', {
     { type: 'pattern', protocol: fake.protocol.replace(':', ''), hostname: fake.hostname },
   ],
 });
+step('intercept armed', `${fake.protocol}//${fake.hostname} at beforeRequestSent`);
 
 bidi.on(async message => {
   if (message.method !== 'network.beforeRequestSent') return;
@@ -140,8 +153,13 @@ bidi.on(async message => {
   const { request } = message.params;
   const localUrl = request.url.replace(FAKE_ORIGIN, LOCAL_ORIGIN);
 
+  step('blocked', `${request.method} ${request.url}`);
+
   const response = await fetch(localUrl, { method: request.method });
+  step('fetched', `${response.status} ${response.statusText} <- ${localUrl}`);
+
   const body = Buffer.from(await response.arrayBuffer());
+  step('providing', `${body.length} B, base64 over the wire`);
 
   await bidi.send('network.provideResponse', {
     request: request.request,
@@ -172,9 +190,6 @@ const evaluated = await bidi.send('script.evaluate', {
 
 const origin = evaluated.result.value;
 
-console.log('origin: ', origin);
-console.log(origin === FAKE_ORIGIN ? 'PASS' : 'FAIL');
-
 ws.close();
 
 // Wait for the process to actually exit before removing the profile: on Windows
@@ -185,3 +200,6 @@ await exited;
 
 await rm(profileDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 await stopServer(server);
+
+// Reported after teardown, so a late interception cannot print past the verdict.
+verdict(origin === FAKE_ORIGIN, `origin   ${origin}`);

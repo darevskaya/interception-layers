@@ -16,6 +16,7 @@ import path from 'node:path';
 import WebSocket from 'ws';
 import puppeteer from 'puppeteer';
 import { startServer, stopServer, LOCAL_ORIGIN, FAKE_ORIGIN } from '../server/app.js';
+import { step, verdict, wire } from './lib/trace.js';
 
 const DEBUG_PORT = 9222;
 
@@ -37,6 +38,8 @@ function createConnection(ws) {
     const message = JSON.parse(raw.toString());
 
     if (message.id !== undefined) {
+      wire('in', `#${message.id}`, message.error ?? message.result);
+
       const { resolve, reject } = pending.get(message.id) ?? {};
       pending.delete(message.id);
 
@@ -46,12 +49,14 @@ function createConnection(ws) {
     }
 
     // No id means it is an event, not a command response.
+    wire('event', message.method, message.params);
     for (const listener of listeners) listener(message);
   });
 
   return {
     send(method, params = {}) {
       const id = ++nextId;
+      wire('out', `#${id} ${method}`, params);
       ws.send(JSON.stringify({ id, method, params }));
       return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
     },
@@ -87,10 +92,14 @@ const chrome = spawn(chromePath, [
   'about:blank',
 ]);
 
+step('launched chromium', `--remote-debugging-port=${DEBUG_PORT}`);
+
 const target = await findPageTarget();
+step('page target', `${target.type} · found through /json/list`);
 
 const ws = new WebSocket(target.webSocketDebuggerUrl);
 await new Promise(resolve => ws.once('open', resolve));
+step('websocket open', target.webSocketDebuggerUrl);
 
 const cdp = createConnection(ws);
 
@@ -98,6 +107,7 @@ const cdp = createConnection(ws);
 await cdp.send('Fetch.enable', {
   patterns: [{ urlPattern: `${FAKE_ORIGIN}/*`, requestStage: 'Request' }],
 });
+step('intercept armed', `${FAKE_ORIGIN}/* at requestStage Request`);
 
 cdp.on(async message => {
   if (message.method !== 'Fetch.requestPaused') return;
@@ -105,13 +115,17 @@ cdp.on(async message => {
   const { requestId, request } = message.params;
   const localUrl = request.url.replace(FAKE_ORIGIN, LOCAL_ORIGIN);
 
+  step('paused', `${request.method} ${request.url}`);
+
   const response = await fetch(localUrl, {
     method: request.method,
     headers: request.headers,
     body: request.postData,
   });
+  step('fetched', `${response.status} ${response.statusText} <- ${localUrl}`);
 
   const body = Buffer.from(await response.arrayBuffer());
+  step('fulfilling', `${body.length} B, base64 over the wire`);
 
   await cdp.send('Fetch.fulfillRequest', {
     requestId,
@@ -131,12 +145,11 @@ await new Promise(resolve => {
   });
 });
 
+step('loaded', 'Page.loadEventFired');
+
 const { result } = await cdp.send('Runtime.evaluate', {
   expression: 'location.origin',
 });
-
-console.log('origin: ', result.value);
-console.log(result.value === FAKE_ORIGIN ? 'PASS' : 'FAIL');
 
 ws.close();
 
@@ -148,3 +161,6 @@ await exited;
 
 await rm(profileDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 await stopServer(server);
+
+// Reported after teardown, so a late interception cannot print past the verdict.
+verdict(result.value === FAKE_ORIGIN, `origin   ${result.value}`);

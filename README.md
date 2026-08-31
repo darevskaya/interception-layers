@@ -21,6 +21,27 @@ It is picked up from puppeteer's browser cache; set `FIREFOX_PATH` only to point
 
 Each example starts and stops its own server and prints `PASS` / `FAIL` on the last line.
 
+## Watching it happen
+
+Every example narrates what it did as it goes. `TRACE=1` adds the raw protocol frames — `→` a command, `←` its reply, `⚡` an event:
+
+```sh
+TRACE=1 npm run raw-cdp
+```
+
+```
+  ▶ websocket open         ws://127.0.0.1:9222/devtools/page/7FE911F9EC23…
+  → #1 Fetch.enable        {"patterns":[{"urlPattern":"http://app.invalid/*"…
+  ← #1                     {}
+  ⚡ Fetch.requestPaused    {"requestId":"interception-job-1.0","request":{…
+  ▶ paused                 GET http://app.invalid/
+  ▶ fetched                200 OK <- http://localhost:3000/
+  ▶ fulfilling             447 B, base64 over the wire
+  → #4 Fetch.fulfillRequest {"requestId":"interception-job-1.0","responseCode":200…
+```
+
+Only examples 3 and 4 have a wire to log; run them back to back and the same shape appears in two vocabularies. Colour is dropped when the output is piped or `NO_COLOR` is set.
+
 ## Interception (1–5)
 
 | # | Run | Layer | Key calls |
@@ -44,11 +65,12 @@ Each example starts and stops its own server and prints `PASS` / `FAIL` on the l
 | 7 | `npm run failed-requests` | Filter at the protocol layer so callers get only what they asked | `Network.enable`, `requestWillBeSent`, `responseReceived`, `loadingFailed` |
 
 - **6.** Chromium can throttle CPU; Playwright has no API for it. One CDP channel for that single call, everything else stays Playwright. Times the same loop before and after and prints the measured slowdown, so the setting is visibly in effect.
-- **7.** `getFailedRequests({ urlPattern })` answers one question — did anything matching fail? — and returns only matches, instead of handing back the whole network log. Matters most when the caller has a context budget, where the full log is cost, not just noise. The example prints unfiltered and filtered results side by side.
+- **7.** `getFailedRequests({ urlPattern })` answers one question — did anything matching fail? — and returns only matches, instead of handing back the whole network log. Matters most when the caller has a context budget, where the full log is cost, not just noise. The run prints a table of every response the page produced beside what the tool actually returns, so the discarded rows are visible.
 
 ## Notes
 
 - `.invalid` is a reserved TLD guaranteed never to resolve — nothing here depends on a domain staying unregistered.
 - CDP is Chromium-only; that is why the BiDi examples exist.
 - BiDi does not yet cover everything CDP exposes — hence examples 6 and 7 being CDP-based, and Puppeteer still defaulting to CDP for Chrome.
-- `server/app.js` is the only shared file: the app page, `/api/products` (succeeds), `/api/checkout` (always 500). Run alone with `npm run server`.
+- `server/app.js` is the only shared runtime file: the app page, `/api/products` (succeeds), `/api/checkout` (always 500). Run alone with `npm run server`.
+- `examples/lib/trace.js` is shared too, but it only formats output — arrows, alignment, colour. No protocol logic lives there, so each example still shows its own mechanism in full.
