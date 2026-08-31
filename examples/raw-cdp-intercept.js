@@ -21,7 +21,7 @@ const DEBUG_PORT = 9222;
 
 // Puppeteer is used only to locate a Chromium binary. Set CHROME_PATH to
 // skip it and point at any Chromium install.
-const chromePath = process.env.CHROME_PATH ?? puppeteer.executablePath();
+const chromePath = process.env.CHROME_PATH ?? (await puppeteer.executablePath());
 
 /**
  * A CDP connection is JSON messages over a WebSocket. Commands carry an id;
@@ -139,6 +139,12 @@ console.log('origin: ', result.value);
 console.log(result.value === FAKE_ORIGIN ? 'PASS' : 'FAIL');
 
 ws.close();
+
+// Wait for the process to actually exit before removing the profile: on Windows
+// the profile files stay locked until it does.
+const exited = new Promise(resolve => chrome.once('exit', resolve));
 chrome.kill();
-await rm(profileDir, { recursive: true, force: true });
+await exited;
+
+await rm(profileDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 await stopServer(server);

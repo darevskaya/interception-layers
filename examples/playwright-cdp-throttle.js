@@ -20,6 +20,7 @@ function measure(page) {
     const started = performance.now();
     let total = 0;
     for (let i = 0; i < 8_000_000; i++) total += Math.sqrt(i);
+    // `total` is returned so the loop cannot be optimised away.
     return { ms: performance.now() - started, total };
   });
 }

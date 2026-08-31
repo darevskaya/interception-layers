@@ -30,10 +30,18 @@ async function resolveFirefox() {
 
   const cacheDir =
     process.env.PUPPETEER_CACHE_DIR ?? path.join(homedir(), '.cache', 'puppeteer');
-  const installed = await getInstalledBrowsers({ cacheDir }).catch(() => []);
-  const firefoxes = installed.filter(browser => browser.browser === 'firefox');
 
-  return firefoxes.sort((a, b) => a.buildId.localeCompare(b.buildId)).at(-1)?.executablePath;
+  // An unread cache directory means nothing is installed yet; anything else is
+  // a real problem and should not be reported as a missing browser.
+  const installed = await getInstalledBrowsers({ cacheDir }).catch(error => {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  });
+
+  return installed
+    .filter(browser => browser.browser === 'firefox')
+    .sort((a, b) => a.buildId.localeCompare(b.buildId, undefined, { numeric: true }))
+    .at(-1)?.executablePath;
 }
 
 const firefoxPath = await resolveFirefox();
@@ -114,9 +122,15 @@ await bidi.send('session.new', { capabilities: {} });
 // only blocks requests when the matching event is subscribed to.
 await bidi.send('session.subscribe', { events: ['network.beforeRequestSent'] });
 
+// BiDi matches on the parts of a URL rather than a glob, so the shared
+// constant is split rather than interpolated.
+const fake = new URL(FAKE_ORIGIN);
+
 await bidi.send('network.addIntercept', {
   phases: ['beforeRequestSent'],
-  urlPatterns: [{ type: 'pattern', protocol: 'http', hostname: 'app.invalid' }],
+  urlPatterns: [
+    { type: 'pattern', protocol: fake.protocol.replace(':', ''), hostname: fake.hostname },
+  ],
 });
 
 bidi.on(async message => {

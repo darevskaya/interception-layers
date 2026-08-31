@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { pathToFileURL } from 'node:url';
 
 export const PORT = 3000;
 export const LOCAL_ORIGIN = `http://localhost:${PORT}`;
@@ -60,7 +61,7 @@ export function stopServer(server) {
 }
 
 // Allow running the server on its own: `node server/app.js`
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   await startServer();
   console.log(`app server listening on ${LOCAL_ORIGIN}`);
 }

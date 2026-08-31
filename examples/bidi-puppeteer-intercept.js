@@ -29,6 +29,7 @@ await page.setRequestInterception(true);
 page.on('request', async request => {
   const url = request.url();
 
+  // Anything not aimed at the fake origin goes through untouched.
   if (!url.startsWith(FAKE_ORIGIN)) {
     await request.continue();
     return;
@@ -52,8 +53,10 @@ page.on('request', async request => {
 await page.goto(`${FAKE_ORIGIN}/`);
 
 const origin = await page.evaluate(() => location.origin);
+const heading = await page.$eval('h1', el => el.textContent);
 
 console.log('origin: ', origin);
+console.log('heading:', heading);
 console.log(origin === FAKE_ORIGIN ? 'PASS' : 'FAIL');
 
 await browser.close();
