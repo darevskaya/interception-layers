@@ -1,26 +1,11 @@
-/**
- * Framework: Playwright, plus a CDP session for raw network events
- * Protocol:  CDP (Network domain)
- *
- * A general browser tool would return the whole request list and leave the
- * filtering to whoever called it. This builds the opposite: one narrow
- * function that answers a single question — did anything matching this
- * pattern fail? — and returns nothing else.
- *
- * The filtering happens against the CDP events, so the caller never receives
- * the full network log at all.
- *
- * Run: node examples/get-failed-requests.js
- */
 import { chromium } from 'playwright';
 import { startServer, stopServer, LOCAL_ORIGIN } from '../server/app.js';
-import { step, table, verdict } from './lib/trace.js';
+import { trace } from './lib/trace.js';
 
 /**
  * Attach a collector to a page and return a query function, plus a way to wait
  * for a request to settle — the collector already sees every response, so the
  * caller never has to guess at a timeout.
- * A request counts as failed if it errored outright or came back 4xx/5xx.
  */
 async function trackRequests(page) {
   const cdp = await page.context().newCDPSession(page);
@@ -28,7 +13,6 @@ async function trackRequests(page) {
   const failures = [];
   const waiters = new Set();
 
-  /** Called once per request, whether it succeeded or failed. */
   function settle(url) {
     for (const waiter of waiters) {
       if (!url.includes(waiter.urlPattern)) continue;
@@ -84,11 +68,8 @@ const browser = await chromium.launch();
 const page = await browser.newPage();
 
 const { getFailedRequests, settled } = await trackRequests(page);
-step('Network.enable', 'collecting, but keeping failures only');
+trace.step('Network.enable', 'collecting, but keeping failures only');
 
-// Trace only: the framework's general-purpose log, which sees every response.
-// It is here to show what the narrow tool above refuses to hand back — the
-// collector itself never retains any of this.
 const seen = [];
 page.on('response', response => {
   seen.push({
@@ -111,11 +92,11 @@ await checkoutSettled;
 const failures = getFailedRequests();
 const matched = getFailedRequests({ urlPattern: '/api/checkout' });
 
-step('page made', `${seen.length} requests`);
-step('tool returns', `${failures.length} failure, ${matched.length} matching /api/checkout`);
+trace.step('page made', `${seen.length} requests`);
+trace.step('tool returns', `${failures.length} failure, ${matched.length} matching /api/checkout`);
 
 console.log('');
-table(
+trace.table(
   ['method', 'path', 'status', 'returned by the tool'],
   seen.map(request => [
     request.method,
@@ -128,7 +109,7 @@ table(
 await browser.close();
 await stopServer(server);
 
-verdict(
+trace.verdict(
   matched.length === 1 && matched[0].status === 500,
   `matched  ${matched.map(failure => `${failure.method} ${failure.url} ${failure.status}`).join(', ')}`,
 );

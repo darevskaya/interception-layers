@@ -1,14 +1,3 @@
-/**
- * Framework: none — raw Chrome DevTools Protocol over a WebSocket
- * Protocol:  CDP
- *
- * The same task as the Playwright and Puppeteer examples, written directly
- * against the protocol: launch Chromium with remote debugging, find the page
- * target, open its WebSocket, enable Fetch interception, and answer paused
- * requests ourselves.
- *
- * Run: node examples/raw-cdp-intercept.js
- */
 import { spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -16,7 +5,7 @@ import path from 'node:path';
 import WebSocket from 'ws';
 import puppeteer from 'puppeteer';
 import { startServer, stopServer, LOCAL_ORIGIN, FAKE_ORIGIN } from '../server/app.js';
-import { step, verdict, wire } from './lib/trace.js';
+import { trace } from './lib/trace.js';
 
 const DEBUG_PORT = 9222;
 
@@ -24,11 +13,6 @@ const DEBUG_PORT = 9222;
 // skip it and point at any Chromium install.
 const chromePath = process.env.CHROME_PATH ?? (await puppeteer.executablePath());
 
-/**
- * A CDP connection is JSON messages over a WebSocket. Commands carry an id;
- * the browser replies with a message carrying the same id. This helper tracks
- * pending ids so each command can be awaited like a normal function call.
- */
 function createConnection(ws) {
   let nextId = 0;
   const pending = new Map();
@@ -38,7 +22,7 @@ function createConnection(ws) {
     const message = JSON.parse(raw.toString());
 
     if (message.id !== undefined) {
-      wire('in', `#${message.id}`, message.error ?? message.result);
+      trace.wire('in', `#${message.id}`, message.error ?? message.result);
 
       const { resolve, reject } = pending.get(message.id) ?? {};
       pending.delete(message.id);
@@ -48,15 +32,14 @@ function createConnection(ws) {
       return;
     }
 
-    // No id means it is an event, not a command response.
-    wire('event', message.method, message.params);
+    trace.wire('event', message.method, message.params);
     for (const listener of listeners) listener(message);
   });
 
   return {
     send(method, params = {}) {
       const id = ++nextId;
-      wire('out', `#${id} ${method}`, params);
+      trace.wire('out', `#${id} ${method}`, params);
       ws.send(JSON.stringify({ id, method, params }));
       return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
     },
@@ -66,7 +49,6 @@ function createConnection(ws) {
   };
 }
 
-/** Poll /json/list until Chromium is up, then return the page target. */
 async function findPageTarget() {
   for (let attempt = 0; attempt < 50; attempt++) {
     try {
@@ -75,7 +57,6 @@ async function findPageTarget() {
       const target = targets.find(t => t.type === 'page');
       if (target) return target;
     } catch {
-      // Chromium has not opened the port yet.
     }
     await new Promise(resolve => setTimeout(resolve, 100));
   }
@@ -92,14 +73,14 @@ const chrome = spawn(chromePath, [
   'about:blank',
 ]);
 
-step('launched chromium', `--remote-debugging-port=${DEBUG_PORT}`);
+trace.step('launched chromium', `--remote-debugging-port=${DEBUG_PORT}`);
 
 const target = await findPageTarget();
-step('page target', `${target.type} · found through /json/list`);
+trace.step('page target', `${target.type} · found through /json/list`);
 
 const ws = new WebSocket(target.webSocketDebuggerUrl);
 await new Promise(resolve => ws.once('open', resolve));
-step('websocket open', target.webSocketDebuggerUrl);
+trace.step('websocket open', target.webSocketDebuggerUrl);
 
 const cdp = createConnection(ws);
 
@@ -114,17 +95,17 @@ cdp.on(async message => {
   const { requestId, request } = message.params;
   const localUrl = request.url.replace(FAKE_ORIGIN, LOCAL_ORIGIN);
 
-  step('paused', `${request.method} ${request.url}`);
+  trace.step('paused', `${request.method} ${request.url}`);
 
   const response = await fetch(localUrl, {
     method: request.method,
     headers: request.headers,
     body: request.postData,
   });
-  step('fetched', `${response.status} ${response.statusText} <- ${localUrl}`);
+  trace.step('fetched', `${response.status} ${response.statusText} <- ${localUrl}`);
 
   const body = Buffer.from(await response.arrayBuffer());
-  step('fulfilling', `${body.length} B, base64 over the wire`);
+  trace.step('fulfilling', `${body.length} B, base64 over the wire`);
 
   await cdp.send('Fetch.fulfillRequest', {
     requestId,
@@ -137,14 +118,13 @@ cdp.on(async message => {
 await cdp.send('Page.enable');
 await cdp.send('Page.navigate', { url: `${FAKE_ORIGIN}/` });
 
-// Wait for the load event before reading anything back out of the page.
 await new Promise(resolve => {
   cdp.on(message => {
     if (message.method === 'Page.loadEventFired') resolve();
   });
 });
 
-step('loaded', 'Page.loadEventFired');
+trace.step('loaded', 'Page.loadEventFired');
 
 const { result } = await cdp.send('Runtime.evaluate', {
   expression: 'location.origin',
@@ -162,4 +142,4 @@ await rm(profileDir, { recursive: true, force: true, maxRetries: 10, retryDelay:
 await stopServer(server);
 
 // Reported after teardown, so a late interception cannot print past the verdict.
-verdict(result.value === FAKE_ORIGIN, `origin   ${result.value}`);
+trace.verdict(result.value === FAKE_ORIGIN, `origin   ${result.value}`);

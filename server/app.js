@@ -21,12 +21,6 @@ const PAGE_HTML = `<!doctype html>
   </body>
 </html>`;
 
-/**
- * Routes:
- *   GET  /              -> the app page
- *   GET  /api/products  -> succeeds, used as a control request
- *   POST /api/checkout  -> always fails with 500, used to demo failure filtering
- */
 function handler(req, res) {
   const url = new URL(req.url, LOCAL_ORIGIN);
 
@@ -46,7 +40,6 @@ function handler(req, res) {
   res.end(PAGE_HTML);
 }
 
-/** Start the app server and resolve once it is listening. */
 export function startServer(port = PORT) {
   const server = http.createServer(handler);
 
@@ -55,7 +48,6 @@ export function startServer(port = PORT) {
   });
 }
 
-/** Close a server started by startServer(). */
 export function stopServer(server) {
   return new Promise(resolve => server.close(resolve));
 }
