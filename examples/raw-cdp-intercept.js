@@ -107,7 +107,6 @@ const cdp = createConnection(ws);
 await cdp.send('Fetch.enable', {
   patterns: [{ urlPattern: `${FAKE_ORIGIN}/*`, requestStage: 'Request' }],
 });
-step('intercept armed', `${FAKE_ORIGIN}/* at requestStage Request`);
 
 cdp.on(async message => {
   if (message.method !== 'Fetch.requestPaused') return;

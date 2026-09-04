@@ -2,15 +2,11 @@
  * Presentation only: arrows, alignment, truncation, colour.
  *
  * Nothing here knows about browsers or protocols — the examples keep all of
- * that themselves. Two levels of output:
+ * that themselves.
  *
- *   step()  always prints. One semantic beat of what the example just did.
- *   wire()  prints only under TRACE=1. One raw protocol frame.
- *
- * Run any example with TRACE=1 to see the wire log:
- *   TRACE=1 node examples/raw-cdp-intercept.js
+ *   step()  one semantic beat of what the example just did
+ *   wire()  one raw protocol frame, in the two examples that have a wire
  */
-export const TRACING = process.env.TRACE === '1';
 
 // Colour is skipped when the output is piped or NO_COLOR is set, so logs and
 // `grep` see clean text.
@@ -48,9 +44,8 @@ const MARKERS = {
   event: () => yellow('⚡'),
 };
 
-/** One protocol frame. Silent unless TRACE=1. */
+/** One protocol frame: a command out, a reply back, or an event. */
 export function wire(direction, label, detail) {
-  if (!TRACING) return;
   console.log(`  ${MARKERS[direction]()} ${label.padEnd(LABEL_WIDTH)} ${dim(compact(detail))}`);
 }
 

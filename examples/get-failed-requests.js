@@ -84,7 +84,7 @@ const browser = await chromium.launch();
 const page = await browser.newPage();
 
 const { getFailedRequests, settled } = await trackRequests(page);
-step('collector', 'attached, keeping failures only');
+step('Network.enable', 'collecting, but keeping failures only');
 
 // Trace only: the framework's general-purpose log, which sees every response.
 // It is here to show what the narrow tool above refuses to hand back — the

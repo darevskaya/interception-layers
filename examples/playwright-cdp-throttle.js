@@ -39,7 +39,7 @@ step('measured', `${before.ms.toFixed(0)} ms, unthrottled`);
 const cdp = await page.context().newCDPSession(page);
 step('cdp session', 'opened on the Playwright page');
 await cdp.send('Emulation.setCPUThrottlingRate', { rate: RATE });
-step('throttled', `Emulation.setCPUThrottlingRate rate ${RATE}`);
+step('setCPUThrottlingRate', `rate ${RATE} — the one call Playwright lacks`);
 
 const after = await measure(page);
 step('measured', `${after.ms.toFixed(0)} ms, throttled`);

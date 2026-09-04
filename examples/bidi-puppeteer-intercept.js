@@ -28,7 +28,7 @@ step('protocol', 'webDriverBiDi — everything below is unchanged');
 const page = await browser.newPage();
 
 await page.setRequestInterception(true);
-step('interception', 'on, for every request the page makes');
+step('setRequestInterception', 'on — every request now reaches the handler');
 
 page.on('request', async request => {
   const url = request.url();

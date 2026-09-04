@@ -22,7 +22,7 @@ let seen = 0;
 let handled = 0;
 page.on('request', () => (seen += 1));
 
-step('route armed', `${FAKE_ORIGIN}/**`);
+step('page.route()', `${FAKE_ORIGIN}/** — matching requests only`);
 
 // Intercept every request to the fake origin and answer it with the
 // response fetched from the real local server.

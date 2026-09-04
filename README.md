@@ -23,11 +23,7 @@ Each example starts and stops its own server and prints `PASS` / `FAIL` on the l
 
 ## Watching it happen
 
-Every example narrates what it did as it goes. `TRACE=1` adds the raw protocol frames — `→` a command, `←` its reply, `⚡` an event:
-
-```sh
-TRACE=1 npm run raw-cdp
-```
+Every example narrates what it did. The two raw-protocol examples also print each frame on the wire — `→` a command, `←` its reply, `⚡` an event:
 
 ```
   ▶ websocket open         ws://127.0.0.1:9222/devtools/page/7FE911F9EC23…
@@ -40,7 +36,7 @@ TRACE=1 npm run raw-cdp
   → #4 Fetch.fulfillRequest {"requestId":"interception-job-1.0","responseCode":200…
 ```
 
-Only examples 3 and 4 have a wire to log; run them back to back and the same shape appears in two vocabularies. Colour is dropped when the output is piped or `NO_COLOR` is set.
+Run examples 3 and 4 back to back and the same shape appears in two vocabularies. Colour is dropped when the output is piped or `NO_COLOR` is set.
 
 ## Interception (1–5)
 

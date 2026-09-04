@@ -144,7 +144,6 @@ await bidi.send('network.addIntercept', {
     { type: 'pattern', protocol: fake.protocol.replace(':', ''), hostname: fake.hostname },
   ],
 });
-step('intercept armed', `${fake.protocol}//${fake.hostname} at beforeRequestSent`);
 
 bidi.on(async message => {
   if (message.method !== 'network.beforeRequestSent') return;
