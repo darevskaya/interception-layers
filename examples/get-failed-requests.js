@@ -1,3 +1,16 @@
+/**
+ * Framework: Playwright, plus a CDP session for the network log
+ * Protocol:  CDP
+ * Browser:   Chromium
+ *
+ * Filtering at the protocol layer so callers get only what they asked for.
+ * getFailedRequests({ urlPattern }) answers one question — did anything
+ * matching fail? — and returns only the matches, instead of handing back the
+ * whole network log. That matters most when the caller has a context budget,
+ * where the full log is cost rather than merely noise.
+ *
+ * Run: node examples/get-failed-requests.js
+ */
 import { chromium } from 'playwright';
 import { startServer, stopServer, LOCAL_ORIGIN } from '../server/app.js';
 import { trace } from './lib/trace.js';
@@ -30,8 +43,7 @@ async function trackRequests(page) {
     });
   });
 
-  // Each request is consumed once, so the in-flight map stays bounded no
-  // matter how long the page runs.
+  // Consumed once, so the in-flight map stays bounded however long the page runs.
   cdp.on('Network.responseReceived', event => {
     const request = requests.get(event.requestId);
     if (!request) return;
@@ -81,12 +93,11 @@ page.on('response', response => {
 
 await page.goto(LOCAL_ORIGIN);
 
-// One request that succeeds, one that does not. The page-side fetch resolves
-// before the CDP event arrives, so wait on the collector rather than on a timer.
+// The page-side fetch resolves before the CDP event, so wait on the collector.
 const checkoutSettled = settled('/api/checkout');
 
-await page.evaluate(() => fetch('/api/products'));
-await page.evaluate(() => fetch('/api/checkout', { method: 'POST' }));
+await page.evaluate(() => fetch('/api/products').catch(() => {}));
+await page.evaluate(() => fetch('/api/checkout', { method: 'POST' }).catch(() => {}));
 await checkoutSettled;
 
 const failures = getFailedRequests();

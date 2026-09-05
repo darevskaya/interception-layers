@@ -1,3 +1,16 @@
+/**
+ * Framework: Puppeteer
+ * Protocol:  CDP (Puppeteer's default for Chrome)
+ * Browser:   Chrome
+ *
+ * The same task as the Playwright example through a differently shaped API.
+ * Interception is switched on globally rather than registered per URL, so both
+ * the matching and the explicit request.continue() fall-through are the
+ * caller's job. There is no route.fetch() equivalent either: the replacement
+ * response is fetched and rebuilt by hand.
+ *
+ * Run: node examples/puppeteer-intercept.js
+ */
 import puppeteer from 'puppeteer';
 import { startServer, stopServer, LOCAL_ORIGIN, FAKE_ORIGIN } from '../server/app.js';
 import { trace } from './lib/trace.js';
@@ -18,9 +31,9 @@ page.on('request', async request => {
     return;
   }
 
-  trace.step('matched', `${request.method()} ${url}`);
-
   const localUrl = url.replace(FAKE_ORIGIN, LOCAL_ORIGIN);
+
+  trace.step('matched', `${request.method()} ${url}`);
 
   const response = await fetch(localUrl, {
     method: request.method(),
@@ -41,6 +54,7 @@ page.on('request', async request => {
 
 await page.goto(`${FAKE_ORIGIN}/`);
 
+// Not aimed at the fake origin — it still reaches the handler anyway.
 await page.evaluate(url => fetch(url).catch(() => {}), `${LOCAL_ORIGIN}/api/products`);
 
 const origin = await page.evaluate(() => location.origin);
@@ -49,5 +63,4 @@ const heading = await page.$eval('h1', el => el.textContent);
 await browser.close();
 await stopServer(server);
 
-// Reported after teardown, so a late interception cannot print past the verdict.
 trace.verdict(origin === FAKE_ORIGIN, `origin   ${origin}`, `heading  ${heading}`);

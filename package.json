@@ -15,9 +15,8 @@
     "failed-requests": "node examples/get-failed-requests.js"
   },
   "dependencies": {
-    "@puppeteer/browsers": "^3.2.1",
-    "playwright": "^1.62.0",
-    "puppeteer": "^25.9.0",
-    "ws": "^8.18.0"
+    "@puppeteer/browsers": "^3.2.2",
+    "playwright": "^1.62.1",
+    "puppeteer": "^25.10.0"
   }
 }

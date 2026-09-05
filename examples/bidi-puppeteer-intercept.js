@@ -2,6 +2,7 @@
  * Framework: Puppeteer
  * Protocol:  WebDriver BiDi (Puppeteer defaults to CDP for Chrome, so it is
  *            requested explicitly here)
+ * Browser:   Chrome
  *
  * The interception code below is character-for-character the same as the
  * CDP-based Puppeteer example. Only the launch options differ. That is the
@@ -39,9 +40,9 @@ page.on('request', async request => {
     return;
   }
 
-  trace.step('matched', `${request.method()} ${url}`);
-
   const localUrl = url.replace(FAKE_ORIGIN, LOCAL_ORIGIN);
+
+  trace.step('matched', `${request.method()} ${url}`);
 
   const response = await fetch(localUrl, {
     method: request.method(),
@@ -62,8 +63,7 @@ page.on('request', async request => {
 
 await page.goto(`${FAKE_ORIGIN}/`);
 
-// One request that is not aimed at the fake origin. Unlike page.route(), it
-// still reaches the handler above — the fall-through is the caller's job.
+// Not aimed at the fake origin — it still reaches the handler anyway.
 await page.evaluate(url => fetch(url).catch(() => {}), `${LOCAL_ORIGIN}/api/products`);
 
 const origin = await page.evaluate(() => location.origin);
@@ -72,5 +72,4 @@ const heading = await page.$eval('h1', el => el.textContent);
 await browser.close();
 await stopServer(server);
 
-// Reported after teardown, so a late interception cannot print past the verdict.
 trace.verdict(origin === FAKE_ORIGIN, `origin   ${origin}`, `heading  ${heading}`);

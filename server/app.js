@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { pathToFileURL } from 'node:url';
 
-export const PORT = 3000;
+const PORT = 3000;
 export const LOCAL_ORIGIN = `http://localhost:${PORT}`;
 export const FAKE_ORIGIN = 'http://app.invalid';
 
@@ -11,12 +11,8 @@ const PAGE_HTML = `<!doctype html>
   <body>
     <h1>Hello from the local app</h1>
     <p id="origin"></p>
-    <button id="checkout">Checkout</button>
     <script>
       document.getElementById('origin').textContent = location.origin;
-      document.getElementById('checkout').addEventListener('click', () => {
-        fetch('/api/checkout', { method: 'POST' }).catch(() => {});
-      });
     </script>
   </body>
 </html>`;
@@ -40,11 +36,11 @@ function handler(req, res) {
   res.end(PAGE_HTML);
 }
 
-export function startServer(port = PORT) {
+export function startServer() {
   const server = http.createServer(handler);
 
   return new Promise(resolve => {
-    server.listen(port, '127.0.0.1', () => resolve(server));
+    server.listen(PORT, '127.0.0.1', () => resolve(server));
   });
 }
 
@@ -53,7 +49,7 @@ export function stopServer(server) {
 }
 
 // Allow running the server on its own: `node server/app.js`
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   await startServer();
   console.log(`app server listening on ${LOCAL_ORIGIN}`);
 }

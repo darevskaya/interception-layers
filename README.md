@@ -11,13 +11,7 @@ npm install
 npx playwright install chromium
 ```
 
-Example 4 also needs Firefox:
-
-```sh
-npx puppeteer browsers install firefox
-```
-
-It is picked up from puppeteer's browser cache; set `FIREFOX_PATH` only to point at a different binary.
+That is the whole setup. The two raw-protocol examples launch a browser binary themselves rather than letting a framework supply one — example 3 needs Chrome, example 4 needs Firefox — and each fetches its own into the shared browser cache the first time it runs, printing a `downloading` line while it does. Every run after that reuses the cache and is immediate. Nothing has to be installed by hand, and `CHROME_PATH` / `FIREFOX_PATH` skip the whole mechanism if you would rather point at a binary you already have.
 
 Each example starts and stops its own server and prints `PASS` / `FAIL` on the last line.
 
@@ -66,7 +60,8 @@ Run examples 3 and 4 back to back and the same shape appears in two vocabularies
 ## Notes
 
 - `.invalid` is a reserved TLD guaranteed never to resolve — nothing here depends on a domain staying unregistered.
-- CDP is Chromium-only; that is why the BiDi examples exist.
+- CDP is Chromium-only today. Firefox shipped a partial CDP implementation around 2019, largely so Puppeteer could drive it, then deprecated and removed it in favour of BiDi — the standard Mozilla co-authored rather than a clone of someone else's. On Firefox 154 the debugging port answers BiDi and 404s `/json/version`. That removal is why the BiDi examples exist.
 - BiDi does not yet cover everything CDP exposes — hence examples 6 and 7 being CDP-based, and Puppeteer still defaulting to CDP for Chrome.
 - `server/app.js` is the only shared runtime file: the app page, `/api/products` (succeeds), `/api/checkout` (always 500). Run alone with `npm run server`.
 - `examples/lib/trace.js` is shared too, but it only formats output — arrows, alignment, colour. No protocol logic lives there, so each example still shows its own mechanism in full.
+- The two raw-protocol examples import no framework — the global `WebSocket` and a browser binary to point it at, so `createConnection()` is the whole protocol client. They do use `@puppeteer/browsers`, but only to fetch that binary; it is a downloader, not a driver, and no part of it is on the protocol path.

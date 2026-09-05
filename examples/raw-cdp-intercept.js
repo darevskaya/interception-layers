@@ -1,25 +1,67 @@
+/**
+ * Framework: none — raw CDP over a WebSocket
+ * Protocol:  Chrome DevTools Protocol
+ * Browser:   Chromium (launched with --remote-debugging-port)
+ *
+ * What examples 1 and 2 do underneath, with nothing hidden. The page target
+ * comes from /json/list and its webSocketDebuggerUrl is opened directly. After
+ * that it is JSON both ways: commands carry an id, replies echo it, and
+ * anything without one is an event. The createConnection() helper below, which
+ * awaits on that id, is most of what a protocol client is.
+ *
+ * Nothing here imports a framework: Node builtins, a WebSocket, and a Chrome
+ * binary to point them at. The binary is fetched into the shared browser cache
+ * on first run, so there is nothing to install by hand.
+ *
+ * Run: node examples/raw-cdp-intercept.js
+ */
 import { spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
-import WebSocket from 'ws';
-import puppeteer from 'puppeteer';
+import {
+  Browser,
+  detectBrowserPlatform,
+  getInstalledBrowsers,
+  install,
+  resolveBuildId,
+} from '@puppeteer/browsers';
 import { startServer, stopServer, LOCAL_ORIGIN, FAKE_ORIGIN } from '../server/app.js';
 import { trace } from './lib/trace.js';
 
 const DEBUG_PORT = 9222;
+const RETRY_LIMIT = 100;
+const RETRY_DELAY = 100;
 
-// Puppeteer is used only to locate a Chromium binary. Set CHROME_PATH to
-// skip it and point at any Chromium install.
-const chromePath = process.env.CHROME_PATH ?? (await puppeteer.executablePath());
+// Uses whatever is already in the browser cache and downloads once if it is
+// empty, so the example runs on a machine with no Chrome installed.
+// CHROME_PATH skips all of it and points at an existing binary.
+async function resolveChrome() {
+  if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
+
+  const cacheDir =
+    process.env.PUPPETEER_CACHE_DIR ?? path.join(homedir(), '.cache', 'puppeteer');
+
+  const installed = await getInstalledBrowsers({ cacheDir }).catch(() => []);
+  const cached = installed.find(entry => entry.browser === Browser.CHROME);
+  if (cached) return cached.executablePath;
+
+  const buildId = await resolveBuildId(Browser.CHROME, detectBrowserPlatform(), 'stable');
+  trace.step('downloading', `chrome ${buildId} — first run only`);
+
+  const { executablePath } = await install({ browser: Browser.CHROME, buildId, cacheDir });
+  return executablePath;
+}
+
+const chromePath = await resolveChrome();
 
 function createConnection(ws) {
   let nextId = 0;
   const pending = new Map();
   const listeners = new Set();
 
-  ws.on('message', raw => {
-    const message = JSON.parse(raw.toString());
+  ws.addEventListener('message', event => {
+    const message = JSON.parse(event.data);
 
     if (message.id !== undefined) {
       trace.wire('in', `#${message.id}`, message.error ?? message.result);
@@ -50,15 +92,14 @@ function createConnection(ws) {
 }
 
 async function findPageTarget() {
-  for (let attempt = 0; attempt < 50; attempt++) {
+  for (let attempt = 0; attempt < RETRY_LIMIT; attempt++) {
     try {
       const response = await fetch(`http://127.0.0.1:${DEBUG_PORT}/json/list`);
       const targets = await response.json();
       const target = targets.find(t => t.type === 'page');
       if (target) return target;
-    } catch {
-    }
-    await new Promise(resolve => setTimeout(resolve, 100));
+    } catch {}
+    await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
   }
   throw new Error('no page target found');
 }
@@ -67,7 +108,7 @@ const server = await startServer();
 const profileDir = await mkdtemp(path.join(tmpdir(), 'cdp-profile-'));
 
 const chrome = spawn(chromePath, [
-  '--headless=new',
+  '--headless',
   `--remote-debugging-port=${DEBUG_PORT}`,
   `--user-data-dir=${profileDir}`,
   'about:blank',
@@ -79,12 +120,11 @@ const target = await findPageTarget();
 trace.step('page target', `${target.type} · found through /json/list`);
 
 const ws = new WebSocket(target.webSocketDebuggerUrl);
-await new Promise(resolve => ws.once('open', resolve));
+await new Promise(resolve => ws.addEventListener('open', resolve, { once: true }));
 trace.step('websocket open', target.webSocketDebuggerUrl);
 
 const cdp = createConnection(ws);
 
-// Pause every request aimed at the fake origin, before it hits the network.
 await cdp.send('Fetch.enable', {
   patterns: [{ urlPattern: `${FAKE_ORIGIN}/*`, requestStage: 'Request' }],
 });
@@ -126,14 +166,17 @@ await new Promise(resolve => {
 
 trace.step('loaded', 'Page.loadEventFired');
 
-const { result } = await cdp.send('Runtime.evaluate', {
-  expression: 'location.origin',
-});
+const evaluate = async expression => {
+  const { result } = await cdp.send('Runtime.evaluate', { expression });
+  return result.value;
+};
+
+const origin = await evaluate('location.origin');
+const heading = await evaluate("document.querySelector('h1').textContent");
 
 ws.close();
 
-// Wait for the process to actually exit before removing the profile: on Windows
-// the profile files stay locked until it does.
+// On Windows the profile stays locked until the process is really gone.
 const exited = new Promise(resolve => chrome.once('exit', resolve));
 chrome.kill();
 await exited;
@@ -141,5 +184,4 @@ await exited;
 await rm(profileDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 await stopServer(server);
 
-// Reported after teardown, so a late interception cannot print past the verdict.
-trace.verdict(result.value === FAKE_ORIGIN, `origin   ${result.value}`);
+trace.verdict(origin === FAKE_ORIGIN, `origin   ${origin}`, `heading  ${heading}`);
