@@ -15,10 +15,13 @@
     "bidi-raw": "node examples/bidi-raw-intercept.js",
     "bidi-puppeteer": "node examples/bidi-puppeteer-intercept.js",
     "cdp-throttle": "node examples/playwright-cdp-throttle.js",
-    "failed-requests": "node examples/get-failed-requests.js"
+    "failed-requests": "node examples/get-failed-requests.js",
+    "token-cost-comparison": "node examples/token-cost-comparison.js"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@puppeteer/browsers": "^3.2.2",
+    "gpt-tokenizer": "^4.0.0",
     "playwright": "^1.62.1",
     "puppeteer": "^25.10.0"
   }
