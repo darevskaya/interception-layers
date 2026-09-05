@@ -1,15 +1,16 @@
 /**
  * Framework: Puppeteer
- * Protocol:  WebDriver BiDi (Puppeteer defaults to CDP for Chrome, so it is
- *            requested explicitly here)
+ * Protocol:  WebDriver BiDi. Puppeteer defaults to CDP for Chrome, so this
+ *            example requests BiDi explicitly.
  * Browser:   Chrome
  *
- * The interception code below is character-for-character the same as the
- * CDP-based Puppeteer example. Only the launch options differ. That is the
- * point of this file: the framework API is the boundary, and the protocol
- * underneath it can change without the calling code noticing.
+ * The interception code below is identical, character for character, to the
+ * CDP-based Puppeteer example. Only the launch options are different. This is
+ * the point of this file: the framework API is a boundary, and the protocol
+ * underneath that boundary can change without the calling code noticing.
  *
- * For Firefox, BiDi is already the default and `protocol` can be omitted.
+ * For Firefox, BiDi is already the default protocol, so you can omit the
+ * `protocol` option.
  *
  * Run: node examples/bidi-puppeteer-intercept.js
  */
@@ -18,15 +19,10 @@ import { startServer, stopServer, LOCAL_ORIGIN, FAKE_ORIGIN } from '../server/ap
 import { trace } from './lib/trace.js';
 
 const server = await startServer();
-
-const browser = await puppeteer.launch({
-  browser: 'chrome',
-  protocol: 'webDriverBiDi',
-});
+const browser = await puppeteer.launch({ protocol: 'webDriverBiDi' });
+const page = await browser.newPage();
 
 trace.step('protocol', 'webDriverBiDi — everything below is unchanged');
-
-const page = await browser.newPage();
 
 await page.setRequestInterception(true);
 trace.step('setRequestInterception', 'on — every request now reaches the handler');
@@ -63,7 +59,7 @@ page.on('request', async request => {
 
 await page.goto(`${FAKE_ORIGIN}/`);
 
-// Not aimed at the fake origin — it still reaches the handler anyway.
+// This fetch does not target the fake origin, but it still reaches the handler. Puppeteer intercepts every request.
 await page.evaluate(url => fetch(url).catch(() => {}), `${LOCAL_ORIGIN}/api/products`);
 
 const origin = await page.evaluate(() => location.origin);

@@ -1,13 +1,16 @@
 /**
- * Framework: Playwright, plus a CDP session for the network log
+ * Framework: Playwright, plus a CDP (Chrome DevTools Protocol) session for
+ *            the network log
  * Protocol:  CDP
  * Browser:   Chromium
  *
- * Filtering at the protocol layer so callers get only what they asked for.
- * getFailedRequests({ urlPattern }) answers one question — did anything
- * matching fail? — and returns only the matches, instead of handing back the
- * whole network log. That matters most when the caller has a context budget,
- * where the full log is cost rather than merely noise.
+ * This example filters requests at the protocol layer, so callers get only
+ * what they asked for. getFailedRequests({ urlPattern }) answers one
+ * question: did any request matching this pattern fail? It returns only the
+ * matching failures, instead of returning the whole network log. This
+ * matters most when the caller has a limited context budget. A context
+ * budget is a limit on how much data a caller can process at once. In that
+ * case, the full log costs resources, not just noise.
  *
  * Run: node examples/get-failed-requests.js
  */
@@ -16,9 +19,10 @@ import { startServer, stopServer, LOCAL_ORIGIN } from '../server/app.js';
 import { trace } from './lib/trace.js';
 
 /**
- * Attach a collector to a page and return a query function, plus a way to wait
- * for a request to settle — the collector already sees every response, so the
- * caller never has to guess at a timeout.
+ * Attach a collector to a page. Return a function that queries the collected
+ * failures, and a function that waits for one request to settle (finish,
+ * either with a response or a failure). The collector already sees every
+ * response, so the caller never has to guess at a timeout.
  */
 async function trackRequests(page) {
   const cdp = await page.context().newCDPSession(page);
@@ -43,7 +47,7 @@ async function trackRequests(page) {
     });
   });
 
-  // Consumed once, so the in-flight map stays bounded however long the page runs.
+  // Each request is removed from the map once it settles. This keeps the map from growing without limit, however long the page runs.
   cdp.on('Network.responseReceived', event => {
     const request = requests.get(event.requestId);
     if (!request) return;
@@ -93,18 +97,20 @@ page.on('response', response => {
 
 await page.goto(LOCAL_ORIGIN);
 
-// The page-side fetch resolves before the CDP event, so wait on the collector.
+// The fetch call on the page resolves before the matching CDP event arrives. Wait on the collector instead of the fetch call.
 const checkoutSettled = settled('/api/checkout');
 
-await page.evaluate(() => fetch('/api/products').catch(() => {}));
-await page.evaluate(() => fetch('/api/checkout', { method: 'POST' }).catch(() => {}));
+// Neither fetch call rejects. A 500 response resolves like any other response.
+// This is why the failure is visible only in the network log.
+await page.evaluate(() => fetch('/api/products'));
+await page.evaluate(() => fetch('/api/checkout', { method: 'POST' }));
 await checkoutSettled;
 
 const failures = getFailedRequests();
 const matched = getFailedRequests({ urlPattern: '/api/checkout' });
 
 trace.step('page made', `${seen.length} requests`);
-trace.step('tool returns', `${failures.length} failure, ${matched.length} matching /api/checkout`);
+trace.step('tool returns', `${failures.length} failed, ${matched.length} matching /api/checkout`);
 
 console.log('');
 trace.table(
@@ -113,7 +119,7 @@ trace.table(
     request.method,
     request.path,
     request.status,
-    failures.some(failure => failure.url.endsWith(request.path)) ? 'yes' : '-',
+    failures.some(failure => new URL(failure.url).pathname === request.path) ? 'yes' : '-',
   ]),
 );
 

@@ -48,7 +48,7 @@ export function stopServer(server) {
   return new Promise(resolve => server.close(resolve));
 }
 
-// Allow running the server on its own: `node server/app.js`
+// This block lets you run the server by itself: `node server/app.js`
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   await startServer();
   console.log(`app server listening on ${LOCAL_ORIGIN}`);

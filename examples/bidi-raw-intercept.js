@@ -1,16 +1,18 @@
 /**
- * Framework: none — raw WebDriver BiDi over a WebSocket
+ * Framework: none. This example uses raw WebDriver BiDi over a WebSocket.
  * Protocol:  WebDriver BiDi
- * Browser:   Firefox (BiDi is available over the remote debugging port directly)
+ * Browser:   Firefox. BiDi is available directly over the remote debugging
+ *            port.
  *
- * The same task as the raw CDP example, over the standardised protocol. The
- * transport is identical in shape — JSON commands with ids, events without —
- * but the command and event names are different, and BiDi requires an explicit
- * session and an event subscription before anything is delivered.
+ * This example does the same task as the raw CDP example, over the
+ * standardized WebDriver BiDi protocol. The transport has the same shape in
+ * both protocols: JSON commands carry an id, and events do not. The command
+ * and event names are different. BiDi also requires an explicit session and
+ * an event subscription before it delivers anything.
  *
- * Like the raw CDP example it imports no framework. The Firefox it needs is
- * fetched into the shared browser cache on first run, so there is nothing to
- * install by hand.
+ * Like the raw CDP example, this file imports no framework. The example
+ * downloads Firefox into the shared browser cache the first time it runs, so
+ * you do not have to install anything by hand.
  *
  * Run: node examples/bidi-raw-intercept.js
  */
@@ -32,9 +34,10 @@ const BIDI_PORT = 9223;
 const RETRY_LIMIT = 100;
 const RETRY_DELAY = 100;
 
-// Uses whatever is already in the browser cache and downloads once if it is
-// empty, so the example runs on a machine with no Firefox installed.
-// FIREFOX_PATH skips all of it and points at an existing binary.
+// This function uses the browser cache if Firefox is already there. If the
+// cache is empty, it downloads Firefox once. This way, the example runs on a
+// machine with no Firefox installed. If you set FIREFOX_PATH, the function
+// skips the cache and the download, and uses the binary at that path instead.
 async function resolveFirefox() {
   if (process.env.FIREFOX_PATH) return process.env.FIREFOX_PATH;
 
@@ -51,8 +54,6 @@ async function resolveFirefox() {
   const { executablePath } = await install({ browser: Browser.FIREFOX, buildId, cacheDir });
   return executablePath;
 }
-
-const firefoxPath = await resolveFirefox();
 
 function createConnection(ws) {
   let nextId = 0;
@@ -92,7 +93,7 @@ function createConnection(ws) {
   };
 }
 
-// Firefox exposes the BiDi endpoint at /session once it is ready.
+// Firefox exposes the BiDi endpoint at /session once it finishes starting.
 async function connect() {
   for (let attempt = 0; attempt < RETRY_LIMIT; attempt++) {
     const socket = new WebSocket(`ws://127.0.0.1:${BIDI_PORT}/session`);
@@ -111,6 +112,7 @@ async function connect() {
 }
 
 const server = await startServer();
+const firefoxPath = await resolveFirefox();
 const profileDir = await mkdtemp(path.join(tmpdir(), 'bidi-profile-'));
 
 const firefox = spawn(firefoxPath, [
@@ -119,7 +121,7 @@ const firefox = spawn(firefoxPath, [
   '--profile', profileDir,
 ]);
 
-trace.step('launched firefox', `${firefoxPath} --remote-debugging-port=${BIDI_PORT}`);
+trace.step('launched firefox', `--remote-debugging-port ${BIDI_PORT}`);
 
 const ws = await connect();
 const bidi = createConnection(ws);
@@ -131,7 +133,7 @@ trace.step('session.new', 'no CDP counterpart');
 await bidi.send('session.subscribe', { events: ['network.beforeRequestSent'] });
 trace.step('session.subscribe', 'without it, requests match but are never blocked');
 
-// BiDi matches on URL parts rather than a glob, so the constant is split.
+// BiDi matches on URL parts (protocol, hostname), not on a glob pattern (a wildcard string). This is why the code splits the FAKE_ORIGIN constant into parts.
 const fake = new URL(FAKE_ORIGIN);
 
 await bidi.send('network.addIntercept', {
@@ -150,7 +152,7 @@ bidi.on(async message => {
 
   trace.step('blocked', `${request.method} ${request.url}`);
 
-  // Unlike CDP's postData, the BiDi event carries no body — GETs only.
+  // The BiDi event carries no request body, unlike CDP's postData field. Because of this, this example only handles GET requests.
   const response = await fetch(localUrl, {
     method: request.method,
     headers: Object.fromEntries(request.headers.map(h => [h.name, h.value.value])),
@@ -172,7 +174,7 @@ bidi.on(async message => {
   });
 });
 
-const { contexts } = await bidi.send('browsingContext.getTree', {});
+const { contexts } = await bidi.send('browsingContext.getTree');
 const context = contexts[0].context;
 
 await bidi.send('browsingContext.navigate', {
@@ -195,7 +197,7 @@ const heading = await evaluate("document.querySelector('h1').textContent");
 
 ws.close();
 
-// On Windows the profile stays locked until the process is really gone.
+// On Windows, the profile folder stays locked until the process fully exits.
 const exited = new Promise(resolve => firefox.once('exit', resolve));
 firefox.kill();
 await exited;

@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "description": "Runnable examples of browser request interception at different layers: framework APIs, raw CDP, and WebDriver BiDi.",
   "scripts": {
     "server": "node server/app.js",

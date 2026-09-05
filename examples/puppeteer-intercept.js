@@ -1,13 +1,16 @@
 /**
  * Framework: Puppeteer
- * Protocol:  CDP (Puppeteer's default for Chrome)
+ * Protocol:  CDP (Chrome DevTools Protocol). This is Puppeteer's default
+ *            protocol for Chrome.
  * Browser:   Chrome
  *
- * The same task as the Playwright example through a differently shaped API.
- * Interception is switched on globally rather than registered per URL, so both
- * the matching and the explicit request.continue() fall-through are the
- * caller's job. There is no route.fetch() equivalent either: the replacement
- * response is fetched and rebuilt by hand.
+ * This example does the same task as the Playwright example, through an API
+ * with a different shape. Puppeteer switches on interception for all
+ * requests, instead of registering a handler for one URL. Because of this,
+ * your code must match the URL itself, and must call request.continue() for
+ * every request it does not handle. Puppeteer has no equivalent to
+ * route.fetch(), so this example fetches the replacement response and
+ * rebuilds it by hand.
  *
  * Run: node examples/puppeteer-intercept.js
  */
@@ -54,7 +57,7 @@ page.on('request', async request => {
 
 await page.goto(`${FAKE_ORIGIN}/`);
 
-// Not aimed at the fake origin — it still reaches the handler anyway.
+// This fetch does not target the fake origin, but it still reaches the handler. Puppeteer intercepts every request.
 await page.evaluate(url => fetch(url).catch(() => {}), `${LOCAL_ORIGIN}/api/products`);
 
 const origin = await page.evaluate(() => location.origin);

@@ -1,67 +1,75 @@
 # Browser interception examples
 
-Intercepting browser requests at different layers: framework APIs, raw CDP, raw WebDriver BiDi.
+This project shows how to intercept browser requests at different layers: framework APIs, raw CDP (Chrome DevTools Protocol), and raw WebDriver BiDi (a standard protocol for browser automation).
 
-Examples 1–5 do the same thing: serve a local app at `http://app.invalid` — a domain with no DNS record and no hosts entry. The request is intercepted before the network, fetched from `http://localhost:3000`, and used to fulfil the original. Each then asserts `location.origin === 'http://app.invalid'`, which holds only if the request was answered at that origin rather than redirected. Examples 6–7 use protocol access for other things.
+Five examples do the same task. Each example serves a local app at `http://app.invalid`. This is a domain with no DNS record and no hosts entry. Each example intercepts the request before it reaches the network, fetches the response from `http://localhost:3000`, and uses that response to answer the original request. Each example then checks that `location.origin` equals `http://app.invalid`. This check passes only if the browser answered the request at that origin, instead of redirecting it.
+
+Two more examples use protocol access for other purposes.
 
 ## Setup
+
+You need Node 22 or newer. The two raw-protocol examples use the global `WebSocket` object, which earlier Node releases do not include.
 
 ```sh
 npm install
 npx playwright install chromium
 ```
 
-That is the whole setup. The two raw-protocol examples launch a browser binary themselves rather than letting a framework supply one — example 3 needs Chrome, example 4 needs Firefox — and each fetches its own into the shared browser cache the first time it runs, printing a `downloading` line while it does. Every run after that reuses the cache and is immediate. Nothing has to be installed by hand, and `CHROME_PATH` / `FIREFOX_PATH` skip the whole mechanism if you would rather point at a binary you already have.
+This is the whole setup process. The two raw-protocol examples launch a browser binary (executable file) themselves, instead of using a framework to supply one. The raw CDP example needs Chrome. The raw BiDi example needs Firefox. Each example downloads its own browser binary into a shared cache the first time it runs, and prints a `downloading` line while it does this. Every later run reuses the cache and starts right away. You do not have to install anything by hand. If you already have a Chrome or Firefox binary you want to use instead, set the `CHROME_PATH` or `FIREFOX_PATH` environment variable to skip the download.
 
-Each example starts and stops its own server and prints `PASS` / `FAIL` on the last line.
+Each example starts its own server, runs, stops the server, and prints `PASS` or `FAIL` on the last line.
 
 ## Watching it happen
 
-Every example narrates what it did. The two raw-protocol examples also print each frame on the wire — `→` a command, `←` its reply, `⚡` an event:
+Every example prints a description of what it did. The two raw-protocol examples also print each message sent over the WebSocket connection: `→` marks a command, `←` marks its reply, and `⚡` marks an event.
 
 ```
-  ▶ websocket open         ws://127.0.0.1:9222/devtools/page/7FE911F9EC23…
-  → #1 Fetch.enable        {"patterns":[{"urlPattern":"http://app.invalid/*"…
-  ← #1                     {}
-  ⚡ Fetch.requestPaused    {"requestId":"interception-job-1.0","request":{…
-  ▶ paused                 GET http://app.invalid/
-  ▶ fetched                200 OK <- http://localhost:3000/
-  ▶ fulfilling             447 B, base64 over the wire
-  → #4 Fetch.fulfillRequest {"requestId":"interception-job-1.0","responseCode":200…
+  ▶ websocket open               ws://127.0.0.1:9222/devtools/page/E5E23C6A4389…
+  → #1 Fetch.enable              {"patterns":[{"urlPattern":"http://app.invalid/*"…
+  ← #1                           {}
+  ⚡ Fetch.requestPaused          {"requestId":"interception-job-1.0","request":{…
+  ▶ paused                       GET http://app.invalid/
+  ▶ fetched                      200 OK <- http://localhost:3000/
+  ▶ fulfilling                   249 B, base64 over the wire
+  → #4 Fetch.fulfillRequest      {"requestId":"interception-job-1.0","responseCode":200…
 ```
 
-Run examples 3 and 4 back to back and the same shape appears in two vocabularies. Colour is dropped when the output is piped or `NO_COLOR` is set.
+If you run the raw CDP example and the raw BiDi example one after the other, you see the same pattern in two different protocols. Color output turns off when the output is piped to another program, or when the `NO_COLOR` environment variable is set.
 
-## Interception (1–5)
+## Interception
 
-| # | Run | Layer | Key calls |
-|---|-----|-------|-----------|
-| 1 | `npm run playwright` | Framework API built for this exact case | `page.route(pattern, handler)`, `route.fetch()` → `route.fulfill()` |
-| 2 | `npm run puppeteer` | Same protocol, differently shaped API | `page.setRequestInterception(true)`, `page.on('request')`, `request.respond()` |
-| 3 | `npm run raw-cdp` | What 1 and 2 do underneath, nothing hidden | `Fetch.enable`, `Fetch.requestPaused`, `Fetch.fulfillRequest` |
-| 4 | `npm run bidi-raw` | The standardised cross-engine protocol, same detail as 3 | `network.addIntercept`, `network.beforeRequestSent`, `network.provideResponse` |
-| 5 | `npm run bidi-puppeteer` | Framework API as a boundary the protocol can change under | example 2's code + `puppeteer.launch({ protocol: 'webDriverBiDi' })` |
+| Run | Layer | Key calls |
+|-----|-------|-----------|
+| `npm run playwright` | Framework API built for this exact case | `page.route(pattern, handler)`, `route.fetch()` → `route.fulfill()` |
+| `npm run puppeteer` | Same protocol, differently shaped API | `page.setRequestInterception(true)`, `page.on('request')`, `request.respond()` |
+| `npm run raw-cdp` | What the two framework examples do underneath, nothing hidden | `Fetch.enable`, `Fetch.requestPaused`, `Fetch.fulfillRequest` |
+| `npm run bidi-raw` | The standardized cross-engine protocol, same detail as the raw CDP example | `network.addIntercept`, `network.beforeRequestSent`, `network.provideResponse` |
+| `npm run bidi-puppeteer` | Framework API as a boundary the protocol can change under | the `npm run puppeteer` code + `puppeteer.launch({ protocol: 'webDriverBiDi' })` |
 
-- **1 → 2.** Playwright registers per URL; Puppeteer flips interception on globally, so matching and the explicit `request.continue()` fall-through are yours. No `route.fetch()` equivalent either — the response is rebuilt by hand.
-- **2 → 3.** Chromium launches with `--remote-debugging-port`, the page target comes from `/json/list`, and its `webSocketDebuggerUrl` is opened directly. After that it is JSON: commands carry an `id`, replies echo it, anything without one is an event. The ~20-line `createConnection(ws)` helper that awaits on that id-matching is most of what a protocol client is.
-- **3 → 4.** Same transport shape, different vocabulary, plus two things CDP needs no equivalent of: an explicit `session.new`, and a `session.subscribe` — without it requests match but are never blocked. Targets **Firefox**, which exposes BiDi on its debugging port; Chrome needs chromedriver or the chromium-bidi mapper in between.
-- **2 → 5.** Character-for-character identical interception code; only the launch options differ. Puppeteer defaults to CDP for Chrome, hence the explicit protocol; for Firefox BiDi is already the default.
+**Playwright to Puppeteer.** Playwright registers a handler for one URL pattern. Puppeteer turns on interception for all requests. Because of this, your code in Puppeteer must match the URL itself, and must call `request.continue()` for every request it does not handle. Puppeteer also has no equivalent to `route.fetch()`, so this example fetches the replacement response and rebuilds it by hand.
 
-## Other protocol access (6–7)
+**Puppeteer to raw CDP.** Chrome launches with the `--remote-debugging-port` flag. The example finds the page target through `/json/list` and opens its `webSocketDebuggerUrl` directly. After that, everything is JSON. Commands carry an `id` field. Replies echo the same `id`. Any message without an `id` is an event. The `createConnection(ws)` helper is about 35 lines long, and it waits for a reply by matching that `id`. This helper is most of what a protocol client needs to do.
 
-| # | Run | Point | Key calls |
-|---|-----|-------|-----------|
-| 6 | `npm run cdp-throttle` | Reach one capability the framework lacks without leaving it | `Emulation.setCPUThrottlingRate` via `newCDPSession(page)` |
-| 7 | `npm run failed-requests` | Filter at the protocol layer so callers get only what they asked | `Network.enable`, `requestWillBeSent`, `responseReceived`, `loadingFailed` |
+**Raw CDP to raw BiDi.** The transport (the underlying connection) has the same shape in both protocols, but the command and event names are different. BiDi also needs two things that CDP does not: an explicit `session.new` call, and a `session.subscribe` call. Without `session.subscribe`, requests match the pattern, but the browser never blocks them. The raw BiDi example targets **Firefox**, because Firefox exposes BiDi directly on its debugging port. To use BiDi with Chrome, you need chromedriver or the chromium-bidi mapper in between.
 
-- **6.** Chromium can throttle CPU; Playwright has no API for it. One CDP channel for that single call, everything else stays Playwright. Times the same loop before and after and prints the measured slowdown, so the setting is visibly in effect.
-- **7.** `getFailedRequests({ urlPattern })` answers one question — did anything matching fail? — and returns only matches, instead of handing back the whole network log. Matters most when the caller has a context budget, where the full log is cost, not just noise. The run prints a table of every response the page produced beside what the tool actually returns, so the discarded rows are visible.
+**Puppeteer to BiDi Puppeteer.** The interception code is identical, character for character. Only the launch options are different. Puppeteer uses CDP by default for Chrome, so the BiDi Puppeteer example requests BiDi explicitly. For Firefox, BiDi is already the default protocol.
+
+## Other protocol access
+
+| Run | Point | Key calls |
+|-----|-------|-----------|
+| `npm run cdp-throttle` | Reach one capability the framework lacks without leaving it | `Emulation.setCPUThrottlingRate` via `newCDPSession(page)` |
+| `npm run failed-requests` | Filter at the protocol layer so callers get only what they asked | `Network.enable`, `requestWillBeSent`, `responseReceived`, `loadingFailed` |
+
+**CPU throttling (`npm run cdp-throttle`).** Chromium can throttle (slow down on purpose) its CPU, but Playwright has no API for this. The example opens one CDP channel for that single call, and uses Playwright for everything else. It times the same loop before and after it applies the throttle, and prints the measured slowdown, so you can see that the setting took effect.
+
+**Filtering failed requests (`npm run failed-requests`).** `getFailedRequests({ urlPattern })` answers one question: did any request matching this pattern fail? It returns only the matching failures, instead of returning the whole network log. This matters most when the caller has a limited context budget. A context budget is a limit on how much data a caller can process at once. In that case, the full log costs resources, not just noise. The example prints a table of every response the page produced next to what the tool actually returns, so you can see which rows the tool discarded.
 
 ## Notes
 
-- `.invalid` is a reserved TLD guaranteed never to resolve — nothing here depends on a domain staying unregistered.
-- CDP is Chromium-only today. Firefox shipped a partial CDP implementation around 2019, largely so Puppeteer could drive it, then deprecated and removed it in favour of BiDi — the standard Mozilla co-authored rather than a clone of someone else's. On Firefox 154 the debugging port answers BiDi and 404s `/json/version`. That removal is why the BiDi examples exist.
-- BiDi does not yet cover everything CDP exposes — hence examples 6 and 7 being CDP-based, and Puppeteer still defaulting to CDP for Chrome.
-- `server/app.js` is the only shared runtime file: the app page, `/api/products` (succeeds), `/api/checkout` (always 500). Run alone with `npm run server`.
-- `examples/lib/trace.js` is shared too, but it only formats output — arrows, alignment, colour. No protocol logic lives there, so each example still shows its own mechanism in full.
-- The two raw-protocol examples import no framework — the global `WebSocket` and a browser binary to point it at, so `createConnection()` is the whole protocol client. They do use `@puppeteer/browsers`, but only to fetch that binary; it is a downloader, not a driver, and no part of it is on the protocol path.
+- `.invalid` is a reserved top-level domain. A top-level domain is the last part of a domain name, such as `.com`. `.invalid` never resolves to a real server. Nothing in this project depends on this domain staying unregistered.
+- CDP works only with Chromium-based browsers today. Firefox shipped a partial CDP implementation around 2019, mainly so that Puppeteer could drive it. Firefox later deprecated and removed this implementation, in favor of BiDi, the standard that Mozilla helped write rather than a copy of another company's protocol. On Firefox 155, the debugging port answers BiDi requests and returns a 404 error for `/json/version`. This removal is the reason the BiDi examples in this project exist.
+- BiDi does not yet cover every feature that CDP exposes. This is why the CPU throttling and failed-requests examples use CDP, and why Puppeteer still defaults to CDP for Chrome.
+- `server/app.js` is the only file shared by every example. It serves the app page, the `/api/products` endpoint (which succeeds), and the `/api/checkout` endpoint (which always returns a 500 error). Run it by itself with `npm run server`.
+- `examples/lib/trace.js` is also shared, but it only formats output: arrows, alignment, and color. It contains no protocol logic, so each example still shows its own mechanism in full.
+- The two raw-protocol examples import no framework. They use the global `WebSocket` object and a browser binary, which makes `createConnection()` the whole protocol client. These examples do use the `@puppeteer/browsers` package, but only to download the browser binary. This package is a downloader, not a driver, and no part of it takes part in the protocol.

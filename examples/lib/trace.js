@@ -7,7 +7,7 @@ const green = paint('32');
 const red = paint('31');
 const yellow = paint('33');
 
-const LABEL_WIDTH = 22;
+const LABEL_WIDTH = 28;
 
 function compact(value, max = 68) {
   if (value === undefined) return '';
@@ -16,9 +16,9 @@ function compact(value, max = 68) {
 }
 
 const MARKERS = {
-  out: () => cyan('→'),
-  in: () => dim('←'),
-  event: () => yellow('⚡'),
+  out: cyan('→'),
+  in: dim('←'),
+  event: yellow('⚡'),
 };
 
 export const trace = {
@@ -31,12 +31,13 @@ export const trace = {
   },
 
   wire(direction, label, detail) {
-    console.log(`  ${MARKERS[direction]()} ${label.padEnd(LABEL_WIDTH)} ${dim(compact(detail))}`);
+    console.log(`  ${MARKERS[direction]} ${label.padEnd(LABEL_WIDTH)} ${dim(compact(detail))}`);
   },
 
-  bar(label, value, max, unit = 'ms', width = 32) {
+  bar(label, value, max) {
+    const width = 32;
     const filled = Math.max(1, Math.round((value / max) * width));
-    console.log(`  ${label.padEnd(14)} ${'█'.repeat(filled).padEnd(width)} ${value} ${unit}`);
+    console.log(`  ${label.padEnd(14)} ${'█'.repeat(filled).padEnd(width)} ${value} ms`);
   },
 
   table(headers, rows) {

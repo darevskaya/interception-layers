@@ -1,17 +1,20 @@
 /**
- * Framework: none — raw CDP over a WebSocket
- * Protocol:  Chrome DevTools Protocol
- * Browser:   Chromium (launched with --remote-debugging-port)
+ * Framework: none. This example uses raw CDP over a WebSocket.
+ * Protocol:  Chrome DevTools Protocol (CDP)
+ * Browser:   Chrome (launched with the --remote-debugging-port flag)
  *
- * What examples 1 and 2 do underneath, with nothing hidden. The page target
- * comes from /json/list and its webSocketDebuggerUrl is opened directly. After
- * that it is JSON both ways: commands carry an id, replies echo it, and
- * anything without one is an event. The createConnection() helper below, which
- * awaits on that id, is most of what a protocol client is.
+ * This example shows what examples 1 and 2 do underneath, with nothing
+ * hidden. The page target comes from /json/list, and the example opens its
+ * webSocketDebuggerUrl directly. After that, every message is JSON in both
+ * directions. Commands carry an id field. Replies echo the same id. Any
+ * message without an id is an event. The createConnection() helper below
+ * waits for a reply by matching this id. This helper is most of what a
+ * protocol client needs to do.
  *
- * Nothing here imports a framework: Node builtins, a WebSocket, and a Chrome
- * binary to point them at. The binary is fetched into the shared browser cache
- * on first run, so there is nothing to install by hand.
+ * This file imports no framework. It uses only Node built-in modules, a
+ * WebSocket, and a Chrome binary to connect to. The example downloads the
+ * binary into the shared browser cache the first time it runs, so you do not
+ * have to install anything by hand.
  *
  * Run: node examples/raw-cdp-intercept.js
  */
@@ -33,9 +36,10 @@ const DEBUG_PORT = 9222;
 const RETRY_LIMIT = 100;
 const RETRY_DELAY = 100;
 
-// Uses whatever is already in the browser cache and downloads once if it is
-// empty, so the example runs on a machine with no Chrome installed.
-// CHROME_PATH skips all of it and points at an existing binary.
+// This function uses the browser cache if Chrome is already there. If the
+// cache is empty, it downloads Chrome once. This way, the example runs on a
+// machine with no Chrome installed. If you set CHROME_PATH, the function
+// skips the cache and the download, and uses the binary at that path instead.
 async function resolveChrome() {
   if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
 
@@ -52,8 +56,6 @@ async function resolveChrome() {
   const { executablePath } = await install({ browser: Browser.CHROME, buildId, cacheDir });
   return executablePath;
 }
-
-const chromePath = await resolveChrome();
 
 function createConnection(ws) {
   let nextId = 0;
@@ -105,6 +107,7 @@ async function findPageTarget() {
 }
 
 const server = await startServer();
+const chromePath = await resolveChrome();
 const profileDir = await mkdtemp(path.join(tmpdir(), 'cdp-profile-'));
 
 const chrome = spawn(chromePath, [
@@ -114,7 +117,7 @@ const chrome = spawn(chromePath, [
   'about:blank',
 ]);
 
-trace.step('launched chromium', `--remote-debugging-port=${DEBUG_PORT}`);
+trace.step('launched chrome', `--remote-debugging-port=${DEBUG_PORT}`);
 
 const target = await findPageTarget();
 trace.step('page target', `${target.type} · found through /json/list`);
@@ -176,7 +179,7 @@ const heading = await evaluate("document.querySelector('h1').textContent");
 
 ws.close();
 
-// On Windows the profile stays locked until the process is really gone.
+// On Windows, the profile folder stays locked until the process fully exits.
 const exited = new Promise(resolve => chrome.once('exit', resolve));
 chrome.kill();
 await exited;

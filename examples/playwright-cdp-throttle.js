@@ -1,13 +1,14 @@
 /**
- * Framework: Playwright, plus one CDP call
+ * Framework: Playwright, plus one CDP (Chrome DevTools Protocol) call
  * Protocol:  CDP, over a session opened on the Playwright page
  * Browser:   Chromium
  *
- * Playwright has no API for CPU throttling, but Chromium exposes it through
- * Emulation.setCPUThrottlingRate. Rather than abandoning the framework, drop to
- * the protocol for the one thing it does not cover and keep using Playwright
- * for everything else. The same loop is timed before and after, so the setting
- * is visibly in effect rather than merely accepted.
+ * Playwright has no API for CPU throttling (slowing down the CPU on purpose).
+ * Chromium exposes this feature through Emulation.setCPUThrottlingRate. This
+ * example does not abandon Playwright. It drops down to the protocol only for
+ * this one feature, and uses Playwright for everything else. The example times
+ * the same loop before and after it applies the throttle, so you can see that
+ * the setting took effect, instead of just trusting that it did.
  *
  * Run: node examples/playwright-cdp-throttle.js
  */
@@ -22,7 +23,7 @@ function measure(page) {
     const started = performance.now();
     let total = 0;
     for (let i = 0; i < 8_000_000; i++) total += Math.sqrt(i);
-    // `total` is returned so the loop cannot be optimised away.
+    // The function returns `total` so the JavaScript engine cannot optimize away the loop.
     return { ms: performance.now() - started, total };
   });
 }

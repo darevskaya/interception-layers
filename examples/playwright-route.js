@@ -1,12 +1,15 @@
 /**
  * Framework: Playwright
- * Protocol:  CDP (managed by Playwright, never touched directly)
+ * Protocol:  CDP (Chrome DevTools Protocol), managed by Playwright. This
+ *            example never calls CDP directly.
  * Browser:   Chromium
  *
- * Serves the local app at http://app.invalid, a domain with no DNS record and
- * no hosts entry. page.route() registers per URL, so the handler is called for
- * matching requests only, and route.fetch() produces a response object that
- * route.fulfill() passes straight through — nothing is rebuilt by hand.
+ * This example serves the local app at http://app.invalid. This is a domain
+ * with no DNS record and no hosts entry. page.route() registers a handler for
+ * one URL pattern, so Playwright calls the handler only for matching requests.
+ * route.fetch() produces a response object, and route.fulfill() passes that
+ * response object straight through, so the example does not rebuild it by
+ * hand.
  *
  * Run: node examples/playwright-route.js
  */
@@ -18,7 +21,7 @@ const server = await startServer();
 const browser = await chromium.launch();
 const page = await browser.newPage();
 
-// Trace only: the handler never sees what Playwright filtered out.
+// This line is for the trace output only. The route handler above never sees the requests that Playwright filtered out.
 page.on('request', request => trace.note(`page request  ${request.method()} ${request.url()}`));
 
 trace.step('page.route()', `${FAKE_ORIGIN}/** — matching requests only`);
@@ -39,7 +42,7 @@ await page.route(`${FAKE_ORIGIN}/**`, async route => {
 
 await page.goto(`${FAKE_ORIGIN}/`);
 
-// Not aimed at the fake origin — Playwright never calls the handler for it.
+// This fetch does not target the fake origin. Playwright never calls the handler for it.
 await page.evaluate(url => fetch(url).catch(() => {}), `${LOCAL_ORIGIN}/api/products`);
 
 const origin = await page.evaluate(() => location.origin);
